@@ -1,4 +1,4 @@
-# dsh-plugin-chatgpt-subscription
+# dsh-chatgpt-subscription
 
 把 **ChatGPT Plus / Pro 订阅**作为一个模型卡片接进 DeepSeek Harness。
 
@@ -7,19 +7,18 @@
 
 ---
 
-## 先说清楚一件事
+## 声明
 
 **ChatGPT 订阅不包含 API 额度。** ChatGPT 和 API 平台是[两套独立计费系统](https://help.openai.com/en/articles/9039756-managing-billing-for-chatgpt-and-the-api-platform)，
-所以「用 Plus 订阅调模型」只有一条官方支持的路径：**Codex 订阅鉴权**
+因此想用「用 Plus 订阅调模型」只能通过官方提供的**Codex 订阅鉴权**路径
 （OpenAI 自己在 [Using Codex with your ChatGPT plan](https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan) 里描述的能力）。
 
-本插件走的就是这条路：
+本插件便是通过此原理：
 
 - 复刻 **Codex CLI 官方 OAuth 设备码流程**（`codex login` 同一套端点、同一个 public client id、同一个 `originator`）；
-- 凭据落在 **Codex CLI 的 `auth.json`** 里，因此两边可以互相复用：你已经 `codex login` 过的机器装上本插件就能直接用；
-- 不抓 `chatgpt.com` 网页会话令牌，不做网页后端的逆向。
+- 凭据落在 **Codex CLI 的 `auth.json`** 里，因此两边可以互相复用：只要 `codex login` 过的机器装上本插件就能直接用。
 
-> 想用 API key（按量计费）请用别的适配器，本插件不是那个用途。
+> 另， API key（按量计费）harness中可在设置-模型中更改。
 
 ---
 
@@ -28,7 +27,7 @@
 | 项 | 要求 |
 |---|---|
 | 订阅 | ChatGPT Plus / Pro / Business 等（Codex 可用的套餐） |
-| 出口地区 | **必须是 OpenAI 支持的国家/地区**。香港不支持，会返回 `unsupported_country_region_territory` |
+| 出口地区 | **必须是 OpenAI 支持的国家/地区**。不支持地区，会返回 `unsupported_country_region_territory` |
 | Node | ≥ 20（桌面端自带的 Node 即可） |
 
 出口地区是最容易踩的坑，安装后**先跑自检**再登录：
@@ -55,7 +54,7 @@ plugin_manager { action: "install_bundle", target: "<本插件目录的绝对路
 node bin/chatgpt-install.mjs --profile "$DSH_HOME/profiles/web"
 ```
 
-它会：
+本方式将：
 
 1. 把插件复制进 profile 的 `node_modules`；
 2. **补齐 `@deepseek-ai` 依赖链接**（见下方「为什么需要补链接」）；
