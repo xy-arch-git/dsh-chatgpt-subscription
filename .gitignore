@@ -1,0 +1,26 @@
+# Dependencies. In this workspace `node_modules` is a SYMLINK into the local DSH
+# installation, so it must be ignored without a trailing slash — `node_modules/`
+# matches directories only and would let the symlink (and its absolute target)
+# be committed.
+node_modules
+**/node_modules
+
+# Local credentials and environment overrides. Never commit these.
+.env
+.env.*
+*.local
+
+# Installer backups of profile files.
+*.bak-*
+*.bak
+
+# Editor / OS noise.
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Scratch output.
+*.log
+tmp/

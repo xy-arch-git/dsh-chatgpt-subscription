@@ -1,0 +1,10 @@
+# dsh-plugin-chatgpt-subscription bundle patch.
+#
+# Inserts the ChatGPT subscription provider row. The plugin registers the
+# `chatgpt-subscription` LLM route, so the provider card and its model list
+# appear in the Web GUI's Models page and model selector.
+#
+# Sign in once with:  node <plugin-dir>/bin/chatgpt-login.mjs
+- insert:
+    - id: chatgpt-subscription
+      name: 'dsh-plugin-chatgpt-subscription'

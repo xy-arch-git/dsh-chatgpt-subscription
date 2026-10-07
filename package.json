@@ -1,0 +1,74 @@
+{
+  "name": "dsh-plugin-chatgpt-subscription",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Use a ChatGPT Plus/Pro subscription in DeepSeek Harness through the official Codex OAuth flow, with a model card for sign-in, account status and real quota.",
+  "type": "module",
+  "license": "MIT",
+  "icon": "./icon.svg",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xy-arch-git/dsh-chatgpt-subscription.git"
+  },
+  "homepage": "https://github.com/xy-arch-git/dsh-chatgpt-subscription#readme",
+  "bugs": {
+    "url": "https://github.com/xy-arch-git/dsh-chatgpt-subscription/issues"
+  },
+  "main": "./src/index.mjs",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./client": "./src/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "dsh-chatgpt-login": "./bin/chatgpt-login.mjs",
+    "dsh-chatgpt-status": "./bin/chatgpt-status.mjs",
+    "dsh-chatgpt-doctor": "./bin/chatgpt-doctor.mjs",
+    "dsh-chatgpt-install": "./bin/chatgpt-install.mjs"
+  },
+  "files": [
+    "src",
+    "bin",
+    "locale/*.json",
+    "cordis.patch.yml",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node test/translate.test.mjs && node test/adapter.test.mjs && node test/integration.test.mjs && node test/account-service.test.mjs",
+    "login": "node bin/chatgpt-login.mjs",
+    "status": "node bin/chatgpt-status.mjs",
+    "doctor": "node bin/chatgpt-doctor.mjs",
+    "install-plugin": "node bin/chatgpt-install.mjs"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "dsh-bundle",
+    "chatgpt",
+    "chatgpt-plus",
+    "codex",
+    "subscription",
+    "oauth",
+    "llm-adapter"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings-models",
+        "@deepseek-ai/dsh-client-connection"
+      ]
+    }
+  }
+}
