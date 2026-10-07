@@ -54,43 +54,6 @@ plugin_manager { action: "install_bundle", target: "<本插件目录的绝对路
 node bin/chatgpt-install.mjs --profile "$DSH_HOME/profiles/web"
 ```
 
-本方式将：
-
-1. 把插件复制进 profile 的 `node_modules`；
-2. **补齐 `@deepseek-ai` 依赖链接**（见下方「为什么需要补链接」）；
-3. 在 profile 的 `package.json` 里登记 dependency 与 `dsh.profile.bundles`；
-4. **加载自检**：真的把插件加载一遍并确认路由注册成功，失败会以非零退出码报错。
-
-**代理默认不配置。** 只有显式传 `--proxy URL` 才会写 `$DSH_HOME/.env`；
-`--unset-proxy` 可以撤销之前写入的代理块。
-
-每个被修改的文件都会先备份成 `*.bak-<时间戳>`。脚本是幂等的，重复执行不会重复插入。
-加 `--dry-run` 可以先看要改什么。
-
-**然后必须重启 DSH 桌面端**——profile bundle 只在启动时组合。
-
-### 为什么需要补链接
-
-DSH 桌面端的 `@deepseek-ai/*` 包在 `app.asar` 里，profile 里的符号链接指向
-`resources/app/node_modules/...` —— 那条路径**只有 DSH 自己的加载器能解析**，
-普通 Node 会认为它不存在。
-
-同时 Node 解析模块时**遇到第一个包含 `@deepseek-ai/` 的 `node_modules` 就停止向上查找**。
-profile 的 `node_modules/@deepseek-ai/` 通常是空目录，于是会挡住上一层
-`profiles/node_modules/` 里真正可用的包。
-
-两者叠加的结果是：插件放进去后 `import '@deepseek-ai/dsh-llm'` 直接失败，
-而 profile bundle 加载失败会让**整个 profile 起不来**。
-
-所以安装脚本会把这三个包链到 `app.asar.unpacked` 里的真实目录：
-
-```
-@deepseek-ai/dsh-llm      → <app>/resources/app.asar.unpacked/node_modules/@deepseek-ai/dsh-llm
-@deepseek-ai/schemastery  → ...
-@deepseek-ai/cordis       → ...
-```
-
-第 5 步的加载自检就是专门验证这件事，所以正常不会出现「装完却起不来」。
 
 ### 手动安装
 
@@ -273,7 +236,7 @@ node bin/chatgpt-doctor.mjs --proxy http://HOST:PORT   # 指定代理
 
 ---
 
-## 它是怎么工作的
+## 工作原理
 
 ```
 DSH agent loop
@@ -333,69 +296,6 @@ Client 半用 `window.__ModuleLoader__.load({ id, factory })` 形式，`require(
 
 ---
 
-## 测试
-
-```bash
-npm test
-```
-
-55 项检查，全部离线（不需要网络、不需要真实凭据）：
-
-- `test/translate.test.mjs` — SSE 解析（含 1 字节分片的边界情况）、请求体构造、
-  文本/工具调用/推理/截断/失败/空流的事件翻译；
-- `test/adapter.test.mjs` — 对着本地 mock 后端跑完整调用：请求头、账号绑定、
-  token 刷新与轮换持久化、401 重试、配额分类、凭据缺失/类型错误；外加模型目录
-  必须覆盖 GPT-6 家族、以及缺少档位时必须回退而不是把不支持的强度发出去；
-- `test/integration.test.mjs` — 在**真实 Cordis Context + 真实 `LlmRuntime`** 上装载插件，
-  验证 provider 卡片、路由注册、目录规范化、流式边界、`NO_ADAPTER` 行为；
-- `test/account-service.test.mjs` — 订阅卡片的后端：设备码流转、并发点击只开一个
-  grant、取消/注销/dispose 之后旧 grant 不能写回凭据、额度窗口换算、错误脱敏
-  （上游正文和本地路径都不外泄），以及 Host 路由本身——**未认证请求必须在
-  进入业务逻辑之前被挡成 401**、方法/内容类型/信封校验、请求体上限、处理函数
-  抛错也不能变成带原文的 500。
-
-### 在真实 DSH 实例里验证（复现步骤）
-
-测试跑在进程内。要证明「插件在**真实的 DSH 启动流程**里也能装上」，可以用一个
-隔离的 `DSH_HOME` 起一个真服务器，完全不碰你正在用的 profile：
-
-```bash
-# <app> 是 DSH 桌面端的安装目录；`--dump-config` 能跑通就说明路径找对了
-W=/tmp/dsh-verify
-A=<app>/resources/app.asar.unpacked/node_modules/@deepseek-ai
-D=$A/dsh/lib/bin.js; N=<桌面端自带 node>
-
-mkdir -p $W/profiles/web/node_modules/@deepseek-ai $W/profiles/node_modules
-ln -s $A $W/profiles/node_modules/@deepseek-ai          # 让所有 harness 包可解析
-cp -r <插件目录> $W/profiles/web/node_modules/dsh-plugin-chatgpt-subscription
-for d in dsh-llm schemastery cordis; do ln -sfn $A/$d $W/profiles/web/node_modules/@deepseek-ai/$d; done
-cat > $W/profiles/web/package.json <<'EOF'
-{ "name":"dsh-profile-web","private":true,
-  "dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","@deepseek-ai/dsh-web-app","dsh-plugin-chatgpt-subscription"]}} }
-EOF
-echo "[]" > $W/profiles/web/cordis.yml
-
-env DSH_HOME=$W $N $D --profile web --dump-config   # 组合后应含 chatgpt-subscription 条目
-env DSH_HOME=$W $N $D --profile web --port 4399 --no-open   # 真服务器
-```
-
-实测结果（启动日志里 `ctx.llm` 的稳态快照）：
-
-```json
-{"provider":"chatgpt-subscription","displayName":"ChatGPT 订阅",
- "routes":["deepseek-official|DeepSeek","deepseek-account|DeepSeek Account",
-           "chatgpt-subscription|ChatGPT 订阅"],
- "cards":["…","chatgpt-subscription|ChatGPT 订阅|chatgpt-subscription"],
- "models":["gpt-6-astra","gpt-6.1-sol","gpt-6-sol","gpt-6-luna","gpt-5.6-sol","gpt-5.6-terra","gpt-5.6-luna","gpt-5.5"]}
-```
-
-即：provider 路由、模型卡片、模型目录三样都和内置 DeepSeek 提供商并列存在于运行中的主机里。
-
-> 提示：profile 里的**第三方**插件（如 `@linxin666/*`）会遇到和本插件一样的
-> `@deepseek-ai/*` 解析遮挡问题。上面第 2 条那个 `profiles/node_modules/@deepseek-ai`
-> 链接对它们同样有效。
-
----
 
 ## 合规边界
 
