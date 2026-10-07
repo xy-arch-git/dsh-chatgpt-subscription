@@ -101,7 +101,7 @@ export async function requestDeviceCode(options = {}) {
   const issuer = (options.issuer ?? DEFAULT_ISSUER).replace(/\/+$/, '');
   const body = await postJson(
     `${issuer}/api/accounts/deviceauth/usercode`,
-    { client_id: CLIENT_ID },
+    { client_id: options.clientId ?? CLIENT_ID },
     options.signal,
   );
   const deviceAuthId = body.device_auth_id;
@@ -112,6 +112,7 @@ export async function requestDeviceCode(options = {}) {
   const interval = Number.parseInt(String(body.interval ?? DEFAULT_INTERVAL_SECONDS), 10);
   return {
     issuer,
+    clientId: options.clientId ?? CLIENT_ID,
     deviceAuthId,
     userCode,
     intervalSeconds: Number.isFinite(interval) && interval > 0 ? interval : DEFAULT_INTERVAL_SECONDS,
@@ -180,7 +181,7 @@ export async function exchangeAuthorizationCode(pending, authorization, options 
     grant_type: 'authorization_code',
     code: authorization.authorizationCode,
     redirect_uri: `${issuer}/deviceauth/callback`,
-    client_id: CLIENT_ID,
+    client_id: pending.clientId ?? CLIENT_ID,
   });
   if (typeof authorization.codeVerifier === 'string' && authorization.codeVerifier.length > 0) {
     form.set('code_verifier', authorization.codeVerifier);

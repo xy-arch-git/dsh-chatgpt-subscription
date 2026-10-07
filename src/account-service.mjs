@@ -94,7 +94,7 @@ export function createAccountService(options, deps = {}) {
     const controller = grantController;
     const run = (async () => {
       try {
-        const grant = await request({ issuer: options.issuer(), signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30000)]) });
+        const grant = await request({ issuer: options.issuer(), clientId: options.clientId?.(), signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30000)]) });
         if (!active(id)) return status();
         const expiresAt = now() + (deps.grantTTL ?? 15 * 60 * 1000);
         login = { state: 'pending', userCode: grant.userCode, verificationUrl: grant.verificationUrl, expiresAt };

@@ -13,7 +13,7 @@
  * A DSH restart is required afterwards, because profile bundles are composed at
  * boot.
  *
- *   node bin/chatgpt-install.mjs --profile <dir> [--proxy URL] [--no-proxy]
+ *   node bin/chatgpt-install.mjs --profile <dir> [--proxy URL | --unset-proxy] [--dry-run]
  */
 
 import { parseArgs } from 'node:util';
@@ -29,7 +29,7 @@ const pluginRoot = resolve(here, '..');
 const { values } = parseArgs({
   options: {
     profile: { type: 'string' },
-    dshHome: { type: 'string' },
+    'dsh-home': { type: 'string' },
     proxy: { type: 'string' },
     'unset-proxy': { type: 'boolean' },
     'dry-run': { type: 'boolean' },
@@ -61,7 +61,7 @@ if (values.help === true || typeof values.profile !== 'string') {
 }
 
 const profileDir = resolve(values.profile);
-const dshHome = values.dshHome !== undefined ? resolve(values.dshHome) : dirname(dirname(profileDir));
+const dshHome = values['dsh-home'] !== undefined ? resolve(values['dsh-home']) : dirname(dirname(profileDir));
 const dryRun = values['dry-run'] === true;
 
 /** Lines describing what happened, for the final report. */
@@ -194,7 +194,7 @@ if (!(await exists(profileDir))) {
 
 // 1. Copy the plugin into the profile's node_modules.
 const target = join(profileDir, 'node_modules', PLUGIN_NAME);
-await mkdir(dirname(target), { recursive: true });
+if (!dryRun) await mkdir(dirname(target), { recursive: true });
 if (dryRun) {
   report.push(`   would copy ${pluginRoot} -> ${target}`);
 } else {
@@ -225,7 +225,7 @@ if (dryRun) {
 // Linking just the packages this plugin imports fixes resolution.
 const REQUIRED_DEPS = ['dsh-llm', 'schemastery', 'cordis'];
 const scopeDir = join(profileDir, 'node_modules', '@deepseek-ai');
-await mkdir(scopeDir, { recursive: true });
+if (!dryRun) await mkdir(scopeDir, { recursive: true });
 for (const dep of REQUIRED_DEPS) {
   const linkPath = join(scopeDir, dep);
   if (await exists(linkPath)) {
@@ -314,60 +314,64 @@ if (manifestChanged) {
 // to — an unstable proxy then takes down unrelated models too. Nothing is
 // written unless the caller asks for it.
 const envPath = join(dshHome, '.env');
-/** Remove only the lines this installer owns, preserving everything else. */
+// Only a balanced, uniquely marked block belongs to this installer. Legacy
+// unmarked proxy lines may be user-owned; never guess and delete them.
+const PROXY_BEGIN = '# BEGIN dsh-plugin-chatgpt-subscription proxy';
+const PROXY_END = '# END dsh-plugin-chatgpt-subscription proxy';
 function stripOwnedProxyBlock(text) {
-  return text
-    .split('\n')
-    .filter(
-      (line) =>
-        !/^\s*(HTTPS?_PROXY|ALL_PROXY|NO_PROXY|https?_proxy|all_proxy|no_proxy)\s*=/.test(line) &&
-        !line.includes('Added by dsh-plugin-chatgpt-subscription') &&
-        !line.includes('loopback stays direct'),
-    )
-    .join('\n')
-    .replace(/^\n+/, '')
-    .replace(/\n+$/, '');
+  const pattern = /^# BEGIN dsh-plugin-chatgpt-subscription proxy( \[joined\])?\r?\n# NOTE: this covers ALL host outbound traffic, not just OpenAI\.\r?\nHTTPS_PROXY=[^\r\n]*\r?\nHTTP_PROXY=[^\r\n]*\r?\nNO_PROXY=127\.0\.0\.1,localhost,::1\r?\n# END dsh-plugin-chatgpt-subscription proxy\r?(?:\n|$)/gm;
+  const match = pattern.exec(text);
+  if (!match) return { text, found: false };
+  // [joined] records the one newline we inserted when the original .env had
+  // no trailing newline, so removal restores its exact original bytes.
+  const separator = text.slice(0, match.index).endsWith('\r\n') ? '\r\n' : '\n';
+  if (match[1] && match.index === 0) return { text, found: false };
+  const start = match[1] ? match.index - separator.length : match.index;
+  return { text: text.slice(0, start) + text.slice(match.index + match[0].length), found: true };
 }
 
 if (values['unset-proxy'] === true) {
   const existing = (await exists(envPath)) ? await readFile(envPath, 'utf8') : '';
-  const next = stripOwnedProxyBlock(existing);
-  if (next === existing.replace(/^\n+/, '').replace(/\n+$/, '')) {
+  const { text: next, found } = stripOwnedProxyBlock(existing);
+  if (!found) {
     report.push(`未在 ${envPath} 找到本脚本写入的代理配置，未改动`);
   } else if (next.length === 0) {
-    // The file held nothing but this block; removing the file restores the default.
+    // The file held nothing but our marked block.
     if (dryRun) {
       report.push(`（dry-run）将删除 ${envPath}`);
     } else {
       await removeWithBackup(envPath, stamp);
       report.push(`已删除 ${envPath}（其中只有本脚本写入的代理配置）`);
     }
+  } else if (dryRun) {
+    report.push(`（dry-run）将从 ${envPath} 移除本脚本代理配置`);
   } else {
-    if (dryRun) {
-      report.push(`（dry-run）将从 ${envPath} 移除代理配置`);
-    } else {
-      await writeWithBackup(envPath, `${next}\n`, stamp);
-      report.push(`已从 ${envPath} 移除代理配置`);
-    }
+    await writeWithBackup(envPath, next, stamp);
+    report.push(`已从 ${envPath} 移除本脚本代理配置`);
   }
 } else if (typeof values.proxy === 'string') {
   const proxy = values.proxy;
   const existing = (await exists(envPath)) ? await readFile(envPath, 'utf8') : '';
-  const kept = stripOwnedProxyBlock(existing);
+  const kept = stripOwnedProxyBlock(existing).text;
+  const joined = kept.length > 0 && !kept.endsWith('\n');
+  const newline = kept.includes('\r\n') ? '\r\n' : '\n';
   const block = [
-    '# Added by dsh-plugin-chatgpt-subscription: route host outbound traffic through the proxy.',
-    '# NOTE: this covers ALL of the host\'s outbound traffic, not just OpenAI.',
+    `${PROXY_BEGIN}${joined ? ' [joined]' : ''}`,
+    '# NOTE: this covers ALL host outbound traffic, not just OpenAI.',
     `HTTPS_PROXY=${proxy}`,
     `HTTP_PROXY=${proxy}`,
     'NO_PROXY=127.0.0.1,localhost,::1',
+    PROXY_END,
     '',
-  ].join('\n');
-  const next = kept.length === 0 ? block : `${kept}\n${block}`;
+  ].join(newline);
+  const next = `${kept}${joined ? newline : ''}${block}`;
   if (dryRun) {
-    report.push(`（dry-run）将写入代理 ${proxy} 到 ${envPath}`);
-  } else {
+    report.push(`（dry-run）将写入代理配置到 ${envPath}`);
+  } else if (next !== existing) {
     await writeWithBackup(envPath, next, stamp);
-    report.push(`已写入代理 ${proxy} 到 ${envPath}`);
+    report.push(`已写入代理配置到 ${envPath}`);
+  } else {
+    report.push(`代理配置已在 ${envPath}，未改动`);
   }
 } else {
   report.push('未配置代理（如需请显式传 --proxy URL；这会接管宿主所有出站流量）');

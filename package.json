@@ -37,7 +37,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node test/translate.test.mjs && node test/adapter.test.mjs && node test/integration.test.mjs && node test/account-service.test.mjs",
+    "test": "node test/translate.test.mjs && node test/adapter.test.mjs && node test/integration.test.mjs && node test/account-service.test.mjs && node test/installer.test.mjs && node test/oauth.test.mjs",
     "login": "node bin/chatgpt-login.mjs",
     "status": "node bin/chatgpt-status.mjs",
     "doctor": "node bin/chatgpt-doctor.mjs",

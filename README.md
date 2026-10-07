@@ -28,7 +28,7 @@
 |---|---|
 | 订阅 | ChatGPT Plus / Pro / Business 等（Codex 可用的套餐） |
 | 出口地区 | **必须是 OpenAI 支持的国家/地区**。不支持地区，会返回 `unsupported_country_region_territory` |
-| Node | ≥ 20（桌面端自带的 Node 即可） |
+| Node | ≥ 22（与 `package.json` 的 engines 声明一致；先检查桌面端内置 Node 版本） |
 
 出口地区是最容易踩的坑，安装后**先跑自检**再登录：
 
@@ -54,6 +54,8 @@ plugin_manager { action: "install_bundle", target: "<本插件目录的绝对路
 node bin/chatgpt-install.mjs --profile "$DSH_HOME/profiles/web"
 ```
 
+需要指定非默认 DSH home 时加 `--dsh-home DIR`；可先加 `--dry-run` 预览且不写文件。
+安装脚本默认不会设置代理，完成后需重启 DSH 才会加载 bundle。
 
 ### 手动安装
 
@@ -157,7 +159,7 @@ node bin/chatgpt-doctor.mjs --proxy http://HOST:PORT   # 指定代理
      HTTP_PROXY=http://HOST:PORT
      NO_PROXY=127.0.0.1,localhost,::1
      ```
-     （`bin/chatgpt-install.mjs --proxy http://HOST:PORT` 会替你写。）
+     （仅显式使用 `bin/chatgpt-install.mjs --proxy http://HOST:PORT` 时写入带标记的代理块；`--unset-proxy` 只移除新版完整标记块。旧版无标记代理行须备份 `.env` 后人工核对和删除。）
    - 或在启动 DSH 的环境里导出同样的变量。
 3. ⚠️ **这会接管宿主进程的全部出站流量，不只是 OpenAI。** DSH 用这些变量安装一个
    全局 fetch dispatcher，所以代理不稳定时，**其他 provider（含 DeepSeek）也会一起断**。
